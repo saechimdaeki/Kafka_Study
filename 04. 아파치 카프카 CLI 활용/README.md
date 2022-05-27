@@ -13,7 +13,7 @@
 
  그러므로 커맨드 라인 툴을 사용하기 전에 현재 브로커에 옵션이 어떻게 설정되어 있는지 확인한 후에 사용하면 실수할 확룔이 줄어든다.
  
-### server.properties를 수정하자..! (아래는 김준성 설정)
+### server.properties를 수정하자..! (아래는 `김준성` 개인 설정)
 ```properties
 # Licensed to the Apache Software Foundation (ASF) under one or more
 # contributor license agreements.  See the NOTICE file distributed with
@@ -178,3 +178,48 @@ $ bin/kafka-topics.sh --bootstrap-server localhost:9092 --list
 ### 테스트 편의를 위한 hosts 설정
 
 ![image](https://user-images.githubusercontent.com/40031858/170610167-3a48cf20-dcd9-4f17-aba5-511efb8a6785.png)
+
+### kafka-topics.sh
+
+```console
+a1101783@1101783M01 kafka_2.12-2.5.0 % bin/kafka-topics.sh --create --bootstrap-server my-kafka:9092 --topic hello.kafka
+```
+
+<img width="880" alt="image" src="https://user-images.githubusercontent.com/40031858/170709018-4c1217fd-75d1-4cfc-84df-e2494b38caab.png">
+
+hello.kafka 토픽처럼 카프카 클러스터 정보와 토픽 이름만으로 토픽을 생성할 수 있다. 클러스터 정보와 토픽 이름은 토픽을 만들기 위한 필수 값이다.
+
+이렇게 만들어진 토픽은 파티션 개수, 복제 개수 등과 같이 다양한 옵션이 포함되어 있지만 모두 브로커에 설정된 기본값으로 생성되었다.
+
+
+파티션 개수, 복제개수, 토픽 데이터 유지 기간 옵션들을 지정하여 토픽을 생성하고 싶다면 다음과 같이 명령을 실행하면 된다. 생성된 토픽들의 이름을 조회하려면 --list옵션을 사용한다
+
+```console
+a1101783@1101783M01 kafka_2.12-2.5.0 % bin/kafka-topics.sh --create --bootstrap-server my-kafka:9092 --partitions 10 --replication-factor 1 --topic hello.kafka2 --config retention.ms=172800000
+```
+
+<img width="1370" alt="image" src="https://user-images.githubusercontent.com/40031858/170709846-2d65839a-f585-4441-8d83-0ebd48c44953.png">
+
+파티션 개수를 늘리기 위해서 --alter 옵션을 사용하면 된다.
+
+<img width="1025" alt="image" src="https://user-images.githubusercontent.com/40031858/170710684-89532b86-6ff2-4900-9f82-a404956b6688.png">
+
+파티션 개수를 늘릴 수 있지만 줄일 수는 없다. 다시 줄이는 명령을 내리면 InvalidPartitionsException이 발생한다.
+
+분산 시스템에서 이미 분산된 데이터를 줄이는 방법은 매우 복잡하다. 삭제 대상 파티션을 지정해야할 뿐만 아니라 기존에 저장되어 있던
+
+레코드를 분산하여 저장하는 로직이 필요하기 때문이다.
+
+이때문에 카프카에서는 파티션을 줄이는 로직은 제공하지 않는다. 만약 피치못할 사정으로 파티션 개수를 줄여야 할때는 토픽을 새로만드는 편이 좋다.
+
+<img width="1467" alt="image" src="https://user-images.githubusercontent.com/40031858/170710984-2c1789e7-53ec-4c77-bd2f-3f6ed8994475.png">
+
+## kafka-configs.sh
+
+토픽의 일부 옵션을 설정하기 위해서는 kafka-configs.sh 명령어를 사용해야 한다. --alter과 --add-config옵션을 사용해서 min.insync.replicas 옵션을토픽별로 설정할 수 있다.
+
+<img width="1098" alt="image" src="https://user-images.githubusercontent.com/40031858/170721226-eab9d250-a7ce-4234-9198-3b0e9b30024c.png">
+
+브로커에 설정된 각종 기본값은 --borker, --all, --describe 옵션을 사용하여 조회할 수 있다.
+
+<img width="1712" alt="image" src="https://user-images.githubusercontent.com/40031858/170721481-9884c1d0-aff2-4e49-b400-277c26ed53ba.png">
