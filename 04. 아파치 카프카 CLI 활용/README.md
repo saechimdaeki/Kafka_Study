@@ -223,3 +223,197 @@ a1101783@1101783M01 kafka_2.12-2.5.0 % bin/kafka-topics.sh --create --bootstrap-
 브로커에 설정된 각종 기본값은 --borker, --all, --describe 옵션을 사용하여 조회할 수 있다.
 
 <img width="1712" alt="image" src="https://user-images.githubusercontent.com/40031858/170721481-9884c1d0-aff2-4e49-b400-277c26ed53ba.png">
+
+## kafka-console-producer.sh
+
+hello.kafka 토픽에 데이터를 넣을 수 있는 kafka-console-producer.sh 명령어를 실행해 보자. 키보드로 문자를 작성하고 엔터키를 누르면 별 다른 응답없이 메시지 값이 전송된다.
+
+메시지 키를 가지는 레코드를 전송해 보자. 메시지 키를 가지는 레코드를 전송하기 위해서는 몇가지 추가 옵션을 작성해야 한다.
+
+`key.separator`를 선언하지 않으면 기본 설정은 Tab delimiter(\t)이므로 key.separator를 선언하지 않고
+
+메시지를 보내려면 메시지 키를 작성하고 탭키를 누른뒤 메시지 값을 작성하고 엔터를 누른다. 여기선 명시적으로 확인하기 위해 콜론을 구분자로 선언했다.
+
+<img width="1320" alt="image" src="https://user-images.githubusercontent.com/40031858/170818805-fc7c1e33-e1c1-4008-b142-affaca6fed75.png">
+
+
+### 메시지 키와 메시지 값이 포함된 레코드가 파티션에 전송됨.
+
+![image](https://user-images.githubusercontent.com/40031858/170818841-89dcd3a4-a68a-42d0-a0fc-09a9fb989ced.png)
+
+메시지 키와 메시지 값을 함께 전송한 레코드는 토픽의 파티션에 저장된다. 메시지 키가 null인 경우에는 프로듀서가 파티션으로 전송할 때 
+
+레코드 배치 단위(레코드 전송 묶음)로 라운드 로빈으로 전송한다. 메시지 키가 존재하는 경우에는 키의 해시값을 작성하여
+
+존재하는 파티션 중 한개에 할당된다. 이로인해 메시지키가 동일한 경우에는 동일한 파티션으로 전송된다.
+
+## kafka-console-consumer.sh
+
+hello.kafka 토픽으로 전송한 데이터는 kafka-console-consumer.sh 명령어로 확인할 수 있다. 이때 필수 옵션으로 --bootstrap-server
+
+에 카프카 클러스터 정보, --topic에 토픽 이름이 필요하다. 추가로 from-beginning 옵션을 주면 토픽에 저장된 가장 처음 데이터부터 출력한다.
+
+```console
+bin/kafka-console-consumer.sh --bootstrap-server my-kafka:9092 --topic hello.kafka --from-beginning
+```
+
+<img width="1711" alt="image" src="https://user-images.githubusercontent.com/40031858/170819156-1a47d289-2de0-4134-8e4b-563dd4e380fa.png">
+
+kafka-console-producer.sh로 보낸 메시지 값이 출력된 것을 확인할 수 있다. 만약 레크드의 메시지 키와 메시지 값을 확인하고 싶다면 --property 옵션을 사용하면 된다.
+
+```console
+bin/kafka-console-consumer.sh --bootstrap-server my-kafka:9092 --topic hello.kafka --property print.key=true --property key.separator="-" --from-beginning
+```
+
+<img width="937" alt="image" src="https://user-images.githubusercontent.com/40031858/170819285-2adb9be8-14de-44d8-8bd0-8c642b66c948.png">
+
+--max-messages 옵션을 사용하면 최대 컨슘 메시지 개수를 설정할 수 있다.
+
+```console
+bin/kafka-console-consumer.sh --bootstrap-server my-kafka:9092 --topic hello.kafka --from-beginning --max-messages 1
+```
+
+<img width="1116" alt="image" src="https://user-images.githubusercontent.com/40031858/170819366-553b999a-0a3a-4258-af57-761126d31e6f.png">
+
+
+-- partition 옵션을 사용하면 특정 파티션만 컨슘할 수 있다.
+
+```console
+ bin/kafka-console-consumer.sh --bootstrap-server my-kafka:9092 --topic hello.kafka --partition 2 --from-beginning
+```
+
+<img width="1140" alt="image" src="https://user-images.githubusercontent.com/40031858/170819412-f2a84dfd-ee46-4bf1-a352-b8460a75d62c.png">
+
+--group 옵션을 사용하면 컨슈머 그룹을 기반으로 kafka-console-consumer가 동작한다. 
+
+`컨슈머 그룹`이란 특정 목적을 가진 컨슈머들을 묶음으로 사용하는 것을 뜻한다. 컨슈머 그룹으로 토픽의 레코드를 가져갈 경우 어느 레코드까지 읽었는지에 대한 데이터가 브로커에 저장된다.
+
+```console
+bin/kafka-console-consumer.sh --bootstrap-server my-kafka:9092 --topic hello.kafka --group hello-group --from-beginning
+```
+
+<img width="1156" alt="image" src="https://user-images.githubusercontent.com/40031858/170819503-0ef496fa-dfd9-4001-9850-dccd26a2fa4d.png">
+
+## kafka-consumer-groups.sh
+
+hello-group이름의 컨슈머 그룹으로 생성된 컨슈머로 hello.kafka토픽의 데이터를 가져갔다. 컨슈머 그룹은 따로 생성하는
+
+명령을 날리지 않고 컨슈머를 동작할 때 컨슈머 그룹 이름을 지정하면 새로 생성된다. 생성된 컨슈머 리스트는 kafka-consumer-groups.sh 명령어로 확인할 수 있다.
+
+```console
+bin/kafka-consumer-groups.sh --bootstrap-server my-kafka:9092 --list
+```
+
+<img width="787" alt="image" src="https://user-images.githubusercontent.com/40031858/170819955-c5494bef-6463-4525-983e-83c595d06abb.png">
+
+
+--dscribe 옵션을 사용하면 해당 컨슈머 그룹이 어떤 토픽을 대상으로 레코드를 가져갔는지 상태를 확인 할 수 있다.
+
+파티션 번호, 현재까지 가져간 레코드의 오프셋, 파티션 마지막 레코드의 오프셋, 컨슈머 랙, 컨슈머 ID, 호스트를 알 수 있기 때문에 컨슈머의 상태를 조회할 때 유용하다
+
+```console
+bin/kafka-consumer-groups.sh --bootstrap-server my-kafka:9092 --group hello-group --describe
+```
+
+<img width="983" alt="image" src="https://user-images.githubusercontent.com/40031858/170820023-1e6dfe44-c3ea-4449-bed7-8c2f6d5c7971.png">
+
+### kafka-consumer-groups.sh 오프셋 리셋
+
+```console
+bin/kafka-consumer-groups.sh --bootstrap-server my-kafka:9092 --group hello-group --topic hello.kafka --reset-offsets --to-earliest --execute
+```
+
+<img width="1297" alt="image" src="https://user-images.githubusercontent.com/40031858/170820179-5c7c7a1d-21dc-408f-86f4-1811c0640c16.png">
+
+### kafka-consumer-groups.sh 오프셋 리셋 종류
+
+- `--to-earliest` : 가장 처음 오프셋(작은번호)으로 리셋
+- `--to-latest` : 가장 마지막 오프셋(큰번호)으로 리셋
+- `--to-current` : 현 시점 기준 오프셋으로 리셋
+- `--to-datetime {YYYY-MM-DDTHH:mmSS.sss}` : 특정 일시로 오프셋 리셋(레코드 타임스탬프 기준)
+- `--to-offset{long}` : 특정 오프셋으로 리셋
+- `--shift-by {+/- long}` : 현재 컨슈머 오프셋에서 앞뒤로 옮겨서 리셋
+
+
+---
+
+# 그 외 커맨드 라인 툴
+
+## kafka-producer-perf-test.sh
+
+kafka-producer-perf-test.sh 는 카프카 프로듀서로 퍼포먼스를 측정할 때 사용된다.
+
+```console
+bin/kafka-producer-perf-test.sh --producer-props bootstrap.servers=my-kafka:9092 --topic hello.kafka --num-records 10 --throughput 1 --record-size 100 --print-metric
+```
+
+<img width="1546" alt="image" src="https://user-images.githubusercontent.com/40031858/170820648-f16e390f-dd73-4f10-9213-312c2884fa7f.png">
+
+### kafka-reassign-partitions.sh
+
+![image](https://user-images.githubusercontent.com/40031858/170820714-1fa0a626-9647-457c-a941-e0013e5a60ba.png)
+
+kafka-reassign-partitions.sh를 사용하면 리더 파티션과 팔로워 파티션이 위치를 변경할 수 있다. 카프카 브로커에는 
+
+auto.leader.rebalance.enable 옵션이 있는데 이 옵션의 기본값은 true로써 클러스터 단위에서 리더 파티션을
+
+자동 리밸런싱하도록 도와준다. 브로커의 백그라운드 스레드가 일정한 간격으로 리더의 위치를 파악하고 필요시 리더 리밸런싱을 통해 리더의 위치가 알맞게 배분된다.
+
+```console
+$ cat partitions.json
+{
+ "partitions":
+ [ { "topic": "hello.kafka", "partition": 0, "replicas": [ 0 ] } ]
+ ,"version": 1
+}
+$ bin/kafka-reassign-partitions.sh --zookeeper my-kafka:2181 \
+ --reassignment-json-file partitions.json --execute
+```
+
+### kafka-delete-record.sh
+
+```console
+$ cat delete.json
+{
+ "partitions": [
+ {
+ "topic": "hello.kafka", "partition": 0, "offset": 5
+ }
+ ], "version": 1
+}
+$ bin/kafka-delete-records.sh --bootstrap-server my-kafka:9092 \
+ --offset-json-file delete.json
+Executing records delete operation
+Records delete operation completed:
+partition: hello.kafka-0 low_watermark: 5
+```
+
+### kafka-dump-log.sh
+
+```console
+$ ls data/hello.kafka-0
+00000000000000000000.index 00000000000000000000.timeindex
+00000000000000000000.log leader-epoch-checkpoint
+$ bin/kafka-dump-log.sh \
+ --files data/hello.kafka-0/00000000000000000000.log \
+ --deep-iteration
+Dumping data/hello.kafka-0/00000000000000000000.log
+Starting offset: 0
+baseOffset: 0 lastOffset: 2 count: 3 baseSequence: -1 lastSequence: -1
+producerId: -1 producerEpoch: -1 partitionLeaderEpoch: 0 isTransactional: false
+isControl: false position: 0 CreateTime: 1642337213446 size: 87 magic: 2
+compresscodec: NONE crc: 23690631 isvalid: true
+...
+```
+
+---
+
+# 토픽을 생성하는 두가지 방법
+토픽을 생성하는 상황은 크게 2가지가 있다. `첫 번째는 카프카 컨슈머 또는 프로듀서가 카프카 브로커에 생성되지 않은 토픽에 대해 데이터를 요청할 때`
+
+그리고 `두 번째는 커맨드 라인 툴로 명시적으로 토픽을 생성하는 것이다.` 토픽을 효과적으로 유지보수하기 위해서는 토픽을 명시적으로 생성하는 것을 추천한다.
+
+토픽마다 처리되어야 하는 데이터의 특성이 다르기 때문이다. 토픽을 생성할 때는 데이터 특성에 따라 옵션을 다르게 설정할 수 있다. 예를 들어, 동시 데이터 처리량이 많아야 하는 토픽의 경우 파티션의 개수를 100으로 설정할 수 있다.
+
+단기간 데이터 처리만 필요한 경우에는 토픽에 들어온 데이터의 보관기간 옵션을 짧게 설정할 수도 있다.
+
