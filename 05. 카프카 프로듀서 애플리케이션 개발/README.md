@@ -134,3 +134,62 @@ min.insync.replicas의 옵션값을 2로 설정했을 때부터 acks를 all로 �
 데이터가 정상적으로 적재되었음을 보장한다. 실제 카프카 클러스터를 운영하면서 브로커가 동시에 2개가 중단되는 일은
 
 극히 드물기 때문에 리더 파티션과 팔로워 파티션 중 1개에 데이터가 적재 완료되었다면 데이터는 유실되지 않는다고 볼 수 있다.
+
+
+### 메시지 키를 가진 레코드를 전송하는 프로듀서
+
+메시지 키가 포함된 레코드를 전송하고 싶다면 ProducerRecord 생성 시 파라미터로 추가해야 한다. 토픽 이름, 메시지 키, 메시지 값을 
+
+순서대로 파라미터로 넣고 생성했을 경우 메시지 키가 지정된다.
+
+```java
+ProducerRecord<String,String> record = new ProducerRecord<>(TOPIC_NAME,"Pangyo","Pangyo");
+producer.send(record);
+ProducerRecord<String,String> record2 = new ProducerRecord<>(TOPIC_NAME,"Busan","Busan");
+producer.send(record2);
+```
+
+![image](https://user-images.githubusercontent.com/40031858/170998220-8c373539-75c4-4dfe-b177-9300edd3f067.png)
+
+
+### 레코드에 파티션 번호를 지정하여 전송하는 프로듀서
+
+파티션을 직접 지정하고 싶다면 토픽이름, 파티션 번호, 메시지 키 , 메시지 값을 순서대로 파라미터로 넣고 생성하면 된다. 파티션 번호는 토픽에 존재하는 파티션 번호로 설정해야한다.
+
+```java
+int partitionNo=0;
+ProducerRecord<String,String> record = new ProducerRecord<>(TOPIC_NAME,partitionNo,"Pankyo","Pankyo");
+producer.send(record);
+```
+
+### 커스텀 파티셔너를 가지는 프로듀서
+
+프로듀서 사용환경에 따라 특정 데이터를 가지는 레코드를 특정 파티션으로 보내야 할 때가 있다. 예를들어 Pangyo라는 값을 가진 메시지 키가 0번 파티션으로 
+
+들어가야 한다고 가정하자. 기본 설정 파티셔너를 사용할 경우 메시지 키의 해시값을 파티션에 매칭하여 데이터를 전송하므로 어느 파티션에 들어가는지 알 수 없다.
+
+이때 Partitioner 인터페이스를 사용하여 사용자 정의 파티셔너를 생성하면 Pangyo라는 값을 가진 메시지 키에 대해서 무조건 파티션 0번으로 지정하도록 설정할 수 있다.
+
+```java
+Properties configs = new Properties();
+configs.put(ProducerConfig.PARTITIONER_CLASS_CONFIG,CustomPartitioner.class);
+KafkaProducer<String,String> producer = new KafkaProducer<>(configs);
+```
+
+```java
+public class CustomPartitioner implements Partitioner {
+ @Override
+ public int partition(String topic, Object key, byte[] keyBytes, Object value, byte[]
+valueBytes, Cluster cluster) {
+ if (keyBytes == null) {
+ throw new InvalidRecordException("Need message key");
+ }
+ if (((String)key).equals("Pangyo"))
+ return 0;
+ List<PartitionInfo> partitions = cluster.partitionsForTopic(topic);
+ int numPartitions = partitions.size();
+ return Utils.toPositive(Utils.murmur2(keyBytes)) % numPartitions;
+ }
+ ...
+}
+```
