@@ -193,3 +193,19 @@ valueBytes, Cluster cluster) {
  ...
 }
 ```
+
+### 레코드의 전송 결과를 확인하는 프로듀서
+
+KafkaProducer의 send() 메서드는 Future객체를 반환한다. 이 객체는 RecordMetadata의 비동기 결과를 표현하는 것으로
+
+ProducerRecord가 카프카 브로커에 정상적으로 적재되었는 지에 대한 데이터가 포함되어 있다. 다음 코드와 같이 get()
+
+메서드를 사용하면 프로듀서로 보낸 데이터의 결과를 동기적으로 가져올 수 있다.
+
+```java
+KafkaProducer<String, String> producer = new KafkaProducer<>(configs);
+ProducerRecord<String, String> record = new ProducerRecord<>(TOPIC_NAME,
+"Pangyo", "Pangyo");
+RecordMetadata metadata = producer.send(record).get();
+logger.info(metadata.toString());
+```
