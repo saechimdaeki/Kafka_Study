@@ -103,3 +103,116 @@
 - latest : 설정하면 가장 높은(가장 최근에 넣은) 오프셋부터 읽기 시작한다
 - earliest : 설정하면 가장 낮은 (가장 오래전에 넣은) 오프셋부터 읽기 시작한다
 - none: 설정하면 컨슈머 그룹이 커밋한 기록이 있는지 찾아본다. 만약 커밋 기록이 없으면 오류를 반환하고, 커밋 기록이 있다면 기존 커밋 기록 이후 오프셋부터 읽기 시작한다. 기본값은 latest다.
+
+---
+
+### 동기 오프셋 커밋 컨슈머
+poll() 메서드가 호출된 이후에 commitSync() 메서드를 호출하여 오프셋 커밋을 명시적으로 수행할 수 있다.
+
+commitSync()는 poll()메서드로 받은 가장 마지막 레코드의 오프셋을 기준으로 커밋한다. 동기 오프셋 커밋을 사용할 경우에는
+
+poll() 메서드로 받은 모든 레코드의 처리가 끝난 이후 commitSync() 메서드를 호출해야한다
+
+```java
+KafkaConsumer<String,String> consumer = new KafkaConsumer<>(configs);
+consumer.subscribe(Arrays.asList(TOPIC_NAME));
+
+while(true){
+    ConsumerRecords<String,String> records = consumer.poll(Duration.ofSeconds(1));
+    for(ConsumerRecord<String,String> record : records){
+        logger.info("record:{}" , record);
+    }
+    consumer.commitSync();
+}
+```
+
+### 동기 오프셋 커밋(레코드 단위) 컨슈머
+```java
+KafkaConsumer<String,String> consumer = new KafkaConsumer<>(configs);
+consumer.subscribe(Arrays.asList(TOPIC_NAME));
+while(true){
+    ConsumerRecords<String,String> records = consumer.poll(Duration.ofSeconds(1));
+    Map<TopicPartition, OffsetAndMetadata> currentOffset = new HashMap<>();
+    
+    for(ConsumerRecord<String,String> record : records){
+        logger.info("record:{}" , record);
+
+        currentOffset.put(
+            new TopicPartition(record.topic(), record.partition()),
+            new OffsetAndMetadata(record.offset() + 1, null));
+        consumer.commitSync(currentOffset);
+    }
+}
+```
+
+### 비동기 오프셋 커밋 컨슈머
+동기 오프셋 커밋을 사용할 경우 커밋 응답을 기다리는 동안 데이터 처리가 일시적으로 중단 되기 때문에 더 많은 데이터를 처리하기 위해서 비동기 오프셋 커밋을 사용할 수 있다.
+
+비동기 오프셋 커밋은 commitAsync()메서드를 호출하여 사용할 수 있다.
+```java
+KafkaConsumer<String,String> consumer = new KafkaConsumer<>(configs);
+consumer.subscribe(Arrays.asList(TOPIC_NAME));
+
+while(true){
+    ConsumerRecords<String,String> records = consumer.poll(Duration.ofSeconds(1));
+    for(ConsumerRecord<String,String> record : records){
+        logger.info("record:{}", record);
+    }
+    consumer.commitAsync();
+}
+```
+
+### 비동기 오프셋 커밋 롤백
+```java
+while(true){
+    ConsumerRecords<String,String> records = consumer.poll(Duration.ofSeconds(1));
+    for(ConsumerRecord<String,String> record : records){
+        logger.info("record:{}" , record);
+    }
+    consumer.commitAsync(new OffsetCommitCallback(){
+        public void onComplete(Map<TopicPartition, OffsetAndMetadata> offsets, Exception e{
+            if( e != null)
+                System.err.println("Commit failed");
+            else
+                System.err.println("Commit succeeded");
+            if( e != null)
+                logger.error("Commit failed for offsets {}", offsets, e);
+        }
+    });
+}
+```
+
+----
+### 리밸런스 리스너를 가진 컨슈머
+
+리밸런스 발생을 감지하기 위해 카프카 라이브러리는 ConsumerRebalanceListener 인터페이스를 지원한다. 
+
+ConsumerRebalanceListener 인터페이스로 구현된 클래스는 onPartitionAssigned() 메서드와 onPartitionRevoked() 메서드로 이루어져 있다.
+
+- onPartitionAssgined() : 리밸런스가 끝난 뒤에 파티션이 할당 완료되면 호출되는 메서드이다.
+- onPartitionRevoked() : 리밸런스가 시작되기 직전에 호출되는 메서드이다. 마짐가으로 처리한 레코드를 기준으로 커밋을 하기 위해서는 
+    
+    리밸런스가 시작하기 직전에 커밋을 하면 되므로 onPartitionRevoked() 메서드에 커밋을 구현하여 처리할 수 있다.
+
+
+----
+
+### 파티션 할당 컨슈머
+
+```java
+private final static int PARTITION_NUMBER = 0;
+private final static String BOOTSTRAP_SERVERS = "my-kafka:9092";
+
+public static void main(String[] args){
+    ...
+    KafkaConsumer<String,String> consumer = new KafkaConsumer<>(configs);
+    consumer.assign(Collections.singleton(new TopicPartition(TOPIC_NAME,PARTITION_NUMBER)));
+    while(true){
+        ConsumerRecords<String,String> records = consumer.poll(Duration.ofSeconds(1));
+        for(ConsumerRecord<String,String> record : records){
+            logger.info("record:{}" , record);
+        }
+    }
+}
+
+```
