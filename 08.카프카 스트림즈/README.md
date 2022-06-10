@@ -207,3 +207,70 @@ countTable.toStream().foreach(((key,value) -> {
 기반으로 keyValueStore로 사용할 수 있다. 특정 토픽을 KTable로 사용하고 ReadOnlyKeyValueStore로 뷰를 가져오면 메시지 키를 기반으로
 
 토픽 데이터를 조회할 수 있게 된다. 카프카를 사용해 로컬캐시를 구현한것과 유사하다고 볼 수 있다.
+
+
+```java
+ReadOnlyKeyValueStore<String,String> keyValueStore;
+StreamBuilder builder = new StreamBuilder();
+KTable<String,String> addressTable = builder.table(ADDRESS_TABLE, Materialized.as(ADDRESS_TABLE));
+
+keyValueStore= streams.store(StoreQueryParameters.fromNameAndType(ADDRESS_TABLE,
+    QueryableStoreTypes.keyValueStore()));
+
+keyValueIterator<String,String> address = keyValueStore.all();
+address.forEachRemaining(keyValue -> log.info(keyValue.toString()));
+```
+
+---
+
+## 프로세서 API
+
+프로세서 API는 스트림즈 DSL보다 투박한 코드를 가지지만 토폴리지를 기준으로 데이터를 처리한다는 관점에서는 동일한 역할을 한다. 스트림즈DSL은 데이터처리 ,분기, 조인을 위한
+
+다양한 메서드들을 제공하지만 추가적인 상세 로직의 구현이 필요하다면 프로세서 API를 활용할 수 있다. 프로세서 API에서는 스트림즈DSL에서 사용했던
+
+KStream, KTable, GlobalKTable 개념이 없다는 점을 주의해야 한다. 다만 스트림즈 DSL과 프로세서 API는 함께 구현하여 사용할 때는 활용할 수 있다.
+
+프로세서API를 구현하기 위해서는 `Processor` 또는 `Transformer` 인터페이스로 구현한 클래스가 필요하다. Processor인터페이스는 일정 로직이 이루어진 뒤
+
+다음 프로세서로 데이터가 넘어가지 않을 때 사용하고 Transformer인터페이스는 일정 로직이 이루어진 뒤 다음 프로세서로 데이터를 넘길때 사용한다
+
+```java
+public class FilterProcessor implements Processor<String,String>{
+    private ProcessorContext context;
+
+    @Override
+    public void init(ProcessorContesxt context){this.context = context;}
+
+    @Override
+    public void process(String key, String value){
+        if(value.length() > 5){
+            context.forward(key,value);
+        }
+        context.commit();
+    }
+    @Override
+    public void close(){
+    }
+}
+
+```
+
+```java
+public class SimpleKafkaProcessor{
+    ...
+    public static void main(String[] args){
+        ...
+        
+        Topology topology = new Topology();
+        topology.addSource("Source", STREAM_LOG)
+            .addProcessor("Process",
+                ()-> new FIlterProcessor(),
+                    "Source")
+            .addSink("Sink", STREAM_LOG_FILTER, "Process");
+        
+        KafkaStreams streaming = new KafkaStreams(toplogy,props);
+        streaming.start();
+    }
+}
+```
