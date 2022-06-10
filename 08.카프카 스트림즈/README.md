@@ -132,3 +132,78 @@ KStream과 KTable 데이터를 조인한다고 가정하자. KStream과 KTable�
 - `default.value.serde` : 레코드의 메시지 값을 직렬화, 역직렬화하는 클래스를 지정한다. 기본값은 바이트 직렬화, 역직렬화 클래스인 Serds.ByteArray().getClass().getName()이다.
 - `num.stream.threads` : 스트림 프로세싱 실행 시 실행될 스레드 개술르 지정한다. 기본값은 11이다
 - `state.dir` : 상태기반 데이터 처리를 할 때 데이터를 저장할 디렉토리를 지정한다. 기본값은 /tmp/kafka-streams이다.
+
+---
+
+## 스트림즈DSL의 윈도우 프로세싱
+
+### 스트림즈DSL - window processing
+
+스트림 데이털르 분석할 때 가장 많이 활용하는 프로세싱 중 하나는 윈도우 연산이다. 윈도우 연산은 특정 시간에 대응하여 취합 연산을 처리할 때 활용한다.
+
+모든 프로세싱은 메시지 키를 기준으로 취합된다. 그러므로 해당 토픽에 동일한 파티션에는 동일한 메시지 키가 있는 레코드가 존재해야지만 정확한 취합이 가능하다.
+
+만약 커스텀 파티셔너를 사용하여 동일 메시지 키가 동일한 파티션에 저장되는 것을 보장하지 못하거나 메시지 키를 넣지 않으면 관련 연산이 불가능하다.
+
+카프카 스트림즈에서 제공하는 윈도우 연산 종류는 다음과 같다
+- 텀블링 윈도우
+- 호핑 윈도우
+- 슬라이딩 윈도우
+- 세션 윈도우
+
+### 스트림즈DSL - 텀블링 윈도우
+
+![image](https://user-images.githubusercontent.com/40031858/173055742-6b043faa-45fe-401e-8f3b-ad24c744b1e4.png)
+
+텀블링 윈도우는 서로 겹치지 않은 윈도우를 특정 간격으로 지속적으로 처리할 때 사용한다. 윈도우 최대 사이즈에 도달하면 해당시점에 데이터를 취합하여 결과를 도출한다.
+
+텀블링 윈도우는 단위 시간당 데이터가 필요할 경우 사용할 수 있다. 예를 들어 5분간 접속한 고객의 수를 측정하여 방문자 추이를 실시간 취합하는 경우 사용할 수 있다.
+
+### 스트림즈DSL - 호핑 윈도우
+
+![image](https://user-images.githubusercontent.com/40031858/173055919-0791fb95-ef1f-437b-b971-5d2bcca8963b.png)
+
+호핑 윈도우는 일정 시간 간격으로 겹치는 윈도우가 존재하는 윈도우 연산을 처리할 경우 사용한다. 호핑 윈도우는 윈도우 사이즈와 윈도우 간격 2가지 변수를 가진다.
+
+윈도우 사이즈는 연산을 수행할 최대 윈도우 사이즈를 뜻하고 윈도우 간격은 서로 다른 윈도우 간 간격을 뜻한다. 텀블링 윈도우와 다르게 동일한 키의 데이터는 서로 다른 윈도우에서 여려번 연산가능
+
+### 스트림즈DSL - 슬라이딩 윈도우
+
+![image](https://user-images.githubusercontent.com/40031858/173056103-3ab6fc74-06e0-472a-82e9-9b28f55ec97e.png)
+
+슬라이딩 윈도우는 호핑 윈도우와 유사하지만 데이터의 정확한 시간을 바탕으로 윈도우 사이즈에 포함되는 데이터를 모두 연산에 포함시키는 특징이 있다.
+
+### 스트림즈DSL- 세션 윈도우
+
+![image](https://user-images.githubusercontent.com/40031858/173056192-07ada2ee-0469-4a47-9ca9-dbed6b52828a.png)
+
+세션 윈도우는 동일 메시지 키의 데이터를 한 세션에 묶어 연산할 때 사용한다. 세션의 최대 만료시간에 따라 윈도우 사이즈가 달라진다.
+
+세션 만료 시간이 자나게 되면 세션 윈도우가 종료되고 해당 윈도우의 모든 데이터를 취합하여 연산한다. 그렇기에 세션윈도우의 윈도우 사이즈는 가변적이다.
+
+### 텀블링 윈도우 예제
+
+텀블링 윈도우를 사용하기 위해서는 groupByKey와 windowedBy를 사용해야 한다. windowedBy의 파라미터는 텀블링 윈도우의 사이즈를 뜻한다.
+
+이후 텀블링 연산으로 출력된 데이터는 KTable로 커밋 inerval마다 출력된다.
+
+```java
+StreamsBuilder builder = new StreamsBuilder();
+KStream<String,String> stream = builder.stream(TEST_LOG);
+
+KTable<Widowed<String>, Long> countTable = stream.groupByKey()
+    .windowedBy(TimeWindows.of(Duration.ofSeconds(5)))
+    .count();
+
+countTable.toStream().foreach(((key,value) -> {
+    log.info(key.key() + " is [" + key.window().startTime() + "~" + key.window().endTime()+"] count:" +value)
+;}));
+```
+
+## 스트림즈DSL의 Queryable store
+
+카프카 스트림즈에서 KTable은 카프카 토픽의 데이터를 로컬의 rocksDB에 Materialized View로 만들어 두고 사용하기 떄문에 레코드의 메시지 키 , 메시지 값을 
+
+기반으로 keyValueStore로 사용할 수 있다. 특정 토픽을 KTable로 사용하고 ReadOnlyKeyValueStore로 뷰를 가져오면 메시지 키를 기반으로
+
+토픽 데이터를 조회할 수 있게 된다. 카프카를 사용해 로컬캐시를 구현한것과 유사하다고 볼 수 있다.
