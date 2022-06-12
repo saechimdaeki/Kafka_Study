@@ -177,6 +177,39 @@ SourceConnector에는 실질적인 데이터를 다루는 부분이 들어가지
 
 예를 들어, 파일의 데이터를 한 줄씩 읽어서 토픽으로 데이털르 보낸다면 토픽으로 데이터를 보낸 줄 번호를 오프셋에 저장할 수 있다.
 
+### SourceConnector
+```java
+public class TestSourceConnector extends SourceConnector {
+ @Override
+ public String version() {}
+ @Override
+ public void start(Map<String, String> props) {}
+ @Override
+ public Class<? extends Task> taskClass() {}
+ @Override
+ public List<Map<String, String>> taskConfigs(int maxTasks) {}
+ @Override
+ public ConfigDef config() {}
+ @Override
+ public void stop() {}
+}
+```
+
+### SourceTask
+```java
+public class TestSourceTask extends SourceTask {
+ @Override
+ public String version() {}
+ @Override
+ public void start(Map<String, String> props) {}
+ @Override
+ public List<SourceRecord> poll() {}
+ @Override
+ public void stop() {}
+}
+```
+
+
 ```java
 public class SingleFileSourceConnectorConfig extends AbstractConfig {
  public static final String DIR_FILE_NAME = "file";
@@ -303,3 +336,283 @@ public class SingleFileSourceTask extends SourceTask {
 문서로 사용할 뿐이다. 그러므로 커넥터에서 반드시 사용자가 입력한 설정이 필요한 값은 HIGH, 사용자의 입력값이 없더라도 상관없고 기본값이 있는 옵션을 MEDIUM,
 
 사용자의 입력값이 없어도 되는 옵션을 LOW 정도로 구분하여 지정하면 된다.
+
+---
+
+## 커스텀 싱크 커넥터
+
+![image](https://user-images.githubusercontent.com/40031858/173210463-c69a690a-8229-4a3e-9f6e-4e68f79e8650.png)
+
+싱크 커넥터는 토픽의 데이털르 타깃 애플리케이션 또는 타깃 파일로 저장하는 역할을 한다. 카프카 커넥트 라이브러리에서 제공하는 SinkCOnnector와 SinkTask
+
+클래스를 사용하면 직접 싱크 커넥터를 구현할 수 있다. 직접 구현한 싱크 커넥트는 빌드하여 jar로 만들고 커넥트의 플러그인으로 추가하여 사용할 수 있다.
+
+### SinkConnector
+
+```java
+public class TestSinkConnector extends SinkConnector {
+ @Override
+ public String version() {}
+ @Override
+ public void start(Map<String, String> props) {}
+ @Override
+ public Class<? extends Task> taskClass() {}
+ @Override
+ public List<Map<String, String>> taskConfigs(int maxTasks) {}
+ @Override
+ public ConfigDef config() {}
+ @Override
+ public void stop() {}
+}
+```
+
+### SinkTask
+
+```java
+public class TestSinkTask extends SinkTask {
+ @Override
+ public String version(){}
+ @Override
+ public void start(Map<String, String> props) {}
+ @Override
+ public void put(Collection<SinkRecord> records) {}
+ @Override
+ public void flush(Map<TopicPartition, OffsetAndMetadata> offsets) {}
+ @Override
+ public void stop() {}
+}
+```
+
+### 파일 싱크 커넥터 구현 예제
+```java
+public class SingleFileSinkConnectorConfig extends AbstractConfig {
+ public static final String DIR_FILE_NAME ="file";
+ private static final String DIR_FILE_NAME_DEFAULT_VALUE = "/tmp/kafka.txt";
+ private static final String DIR_FILE_NAME_DOC ="저장할 디렉토리와 파일 이름";
+ public static ConfigDef CONFIG = new ConfigDef().define(DIR_FILE_NAME,
+                        Type.STRING, 
+                        DIR_FILE_NAME_DEFAULT_VALUE,
+                        Importance.HIGH,
+                        DIR_FILE_NAME_DOC);
+ public SingleFileSinkConnectorConfig(Map<String, String> props) {
+    super(CONFIG, props);
+ }
+}
+```
+
+```java
+public class SingleFileSinkConnector extends SinkConnector {
+    private final Logger logger = LoggerFactory.getLogger(this.getClass());
+    private Map<String, String> configProperties;
+    @Override
+    public String version() { return "1.0"; }
+    @Override
+    public void start(Map<String, String> props) {
+        this.configProperties = props;
+    try {
+        new SingleFileSinkConnectorConfig(props);
+    } catch (ConfigException e) {
+        throw new ConnectException(e.getMessage(), e);
+    }
+ }
+ ...
+```
+
+```java
+public class SingleFileSinkConnector extends SinkConnector {
+ ...
+    @Override
+    public List<Map<String, String>> taskConfigs(int maxTasks) {
+    List<Map<String, String>> taskConfigs = new ArrayList<>();
+    Map<String, String> taskProps = new HashMap<>();
+    taskProps.putAll(configProperties);
+    for (int i = 0; i < maxTasks; i++) {
+        taskConfigs.add(taskProps);
+    }
+    return taskConfigs;
+ }
+    @Override
+    public ConfigDef config() { return SingleFileSinkConnectorConfig.CONFIG; }
+    @Override
+    public void stop() { }
+}
+```
+
+```java
+public class SingleFileSinkTask extends SinkTask {
+    private SingleFileSinkConnectorConfig config;
+    private File file;
+    private FileWriter fileWriter;
+    @Override
+    public String version() { return "1.0"; }
+    @Override
+    public void start(Map<String, String> props) {
+    try {
+        config = new SingleFileSinkConnectorConfig(props);
+        file = new File(config.getString(config.DIR_FILE_NAME));
+        fileWriter = new FileWriter(file, true);
+    } catch (Exception e) {
+        throw new ConnectException(e.getMessage(), e);
+    }
+ }
+ ...
+```
+
+```java
+public class SingleFileSinkTask extends SinkTask {
+    ...
+    @Override
+    public void put(Collection<SinkRecord> records) { //토픽에서 polling 되어 처리가 되어야 하는 다수의 레코드
+    try {
+        for (SinkRecord record : records) {
+        fileWriter.write(record.value().toString() + "\n");
+     }
+    } catch (IOException e) {
+        throw new ConnectException(e.getMessage(), e);
+    }
+ }
+    @Override
+    public void flush(Map<TopicPartition, OffsetAndMetadata> offsets) { //커밋 시점마다 호출되는 메서드
+        try {
+            fileWriter.flush();
+        } catch (IOException e) {
+        throw new ConnectException(e.getMessage(), e);
+         }
+ }
+ ...
+```
+
+```java
+public class SingleFileSinkTask extends SinkTask {
+    ...
+    @Override
+    public void stop() {
+    try {
+        fileWriter.close();
+    } catch ( IOException e) {
+    throw new ConnectException(e.getMessage(), e);
+    }
+ }
+}
+```
+
+---
+
+## 분산모드 카프카 커넥트 실습
+
+```console
+$ cat config/connect-distributed.properties
+bootstrap.servers=my-kafka:9092
+group.id=connect-cluster
+key.converter=org.apache.kafka.connect.storage.StringConverter
+value.converter=org.apache.kafka.connect.storage.StringConverter
+key.converter.schemas.enable=false
+value.converter.schemas.enable=false
+offset.storage.topic=connect-offsets
+offset.storage.replication.factor=1
+config.storage.topic=connect-configs
+config.storage.replication.factor=1
+status.storage.topic=connect-status
+status.storage.replication.factor=1
+offset.flush.interval.ms=10000
+```
+
+### 분산 모드 커넥트 실행, 플러그인 확인
+
+```console
+$ bin/connect-distributed.sh config/connect-distributed.properties
+[2021-12-03 14:01:14,219] INFO WorkerInfo values:
+jvm.args = -Xms256M, -Xmx2G, -XX:+UseG1GC, -XX:MaxGCPauseMi
+...
+$ curl -X GET http://localhost:8083/connector-plugins
+[
+ {
+ "class": "org.apache.kafka.connect.file.FileStreamSinkConnector",
+ "type": "sink",
+ "version": "2.5.0"
+ }...
+```
+
+### FileStreamSinkConnector 테스트
+
+```console
+$ curl -X POST \
+ http://localhost:8083/connectors \
+ -H 'Content-Type: application/json' \
+ -d '{
+ "name":
+"file-sink-test",
+ "config":
+ {
+ "topics":"test",
+ "connector.class":"org.apache.kafka.connect.file.FileStreamSinkConnector",
+ "tasks.max":1,
+ "file":"/tmp/connect-test.txt"
+ }
+}
+```
+
+### FileStreamSinkConnector 실행 확인
+
+```console
+$ curl http://localhost:8083/connectors/file-sink-test/status
+{
+ "name":
+"file-sink-test",
+ "connector": {
+ "state": "RUNNING",
+ "worker_id": "127.0.0.1:8083"
+ },
+ "tasks": [
+ {
+ "id": 0,
+ "state": "RUNNING",
+ "worker_id": "127.0.0.1:8083"
+ }
+ ],
+ "type": "sink"
+}
+```
+
+### FileStreamSinkConnector로 생성된 파일 확인
+```console
+$ bin/kafka-console-producer.sh --bootstrap-server my-kafka:9092 \
+ --topic connect-test
+>a
+>b
+>c
+>d
+>e
+>f
+>g
+$ cat /tmp/connect-test.txt
+a
+b
+c
+d
+e
+```
+
+### FileStreamSinkConnector 종료
+
+```console
+$ curl http://localhost:8083/connectors
+["file-sink-test"]
+$ curl -X DELETE http://localhost:8083/connectors/file-sink-test
+$ curl http://localhost:8083/connectors
+[]
+```
+
+---
+
+## 정리
+- 카프카 커넥트는 반복적인 파이프라인을 생성시 유용하다
+- 커넥트는 커넥터를 실행하기 위한 상용환경에서 분산 운영된다
+- 단일 모드 커넥트는 디버그 또는 에이전트 역할로 수행된다
+- 커넥트는 커넥터를 실행하기 위한 프로세스이다
+- 커넥터는 오픈소스 커넥터와 직접 개발하는 커스텀 커넥터로 구분된다
+- 커스텀 커넥터를 사용하여 싱크 커넥터, 소스 커넥터를 개발할 수 있다
+- 커넥터는 Connector와 Task로 이루어져있다
+- Connector는 Task를 운영하는 스레드이다
+- Task는 실질적으로 동작을 하는 컨슈머 또는 프로듀서 역할을 한다
+
